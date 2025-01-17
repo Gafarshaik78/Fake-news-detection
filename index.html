@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fake News Detector</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f9;
+            color: #333;
+        }
+        .container {
+            max-width: 600px;
+            margin: 50px auto;
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #4CAF50;
+        }
+        textarea {
+            width: 100%;
+            height: 150px;
+            padding: 10px;
+            margin-top: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        button {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 10px;
+            text-align: center;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        .fake {
+            background-color: #ffcccc;
+            color: #cc0000;
+        }
+        .real {
+            background-color: #ccffcc;
+            color: #006600;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Fake News Detector</h1>
+        <textarea id="newsInput" placeholder="Enter news text here..."></textarea>
+        <button id="detectButton">Detect</button>
+        <div id="result" class="result" style="display: none;"></div>
+    </div>
+
+    <script>
+        document.getElementById('detectButton').addEventListener('click', async () => {
+            const newsText = document.getElementById('newsInput').value.trim();
+            const resultDiv = document.getElementById('result');
+
+            if (!newsText) {
+                resultDiv.style.display = 'block';
+                resultDiv.textContent = 'Please enter some text!';
+                resultDiv.className = 'result fake';
+                return;
+            }
+
+            resultDiv.style.display = 'none';
+
+            try {
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ text: newsText })
+                });
+
+                const data = await response.json();
+
+                resultDiv.style.display = 'block';
+                resultDiv.textContent = `Result: ${data.result} (Confidence: ${(data.confidence * 100).toFixed(2)}%)`;
+
+                resultDiv.className = data.result === 'Real' ? 'result real' : 'result fake';
+            } catch (error) {
+                console.error('Error:', error);
+                resultDiv.style.display = 'block';
+                resultDiv.textContent = 'Error processing the request. Please try again later.';
+                resultDiv.className = 'result fake';
+            }
+        });
+    </script>
+</body>
+</html>
