@@ -8,8 +8,8 @@ from sklearn.model_selection import train_test_split
 from flask import Flask, request, jsonify
 
 # Step 1: Load and preprocess datasets
-fake_df = pd.read_csv('/content/Fake.csv')
-true_df = pd.read_csv('/content/True.csv')
+fake_df = pd.read_csv('/workspaces/Fake-news-detection/data/Fake.csv')
+true_df = pd.read_csv('/workspaces/Fake-news-detection/data/True.csv')
 
 fake_df['label'] = 0  # Fake news
 true_df['label'] = 1  # Real news
@@ -65,17 +65,33 @@ X_train_attention, X_test_attention = train_test_split(
 assert len(X_train_ids) == len(X_train_attention) == len(y_train), "Training set dimensions must match."
 assert len(X_test_ids) == len(X_test_attention) == len(y_test), "Test set dimensions must match."
 
-# Step 4: Define BERT + LSTM model
+# step 4 Define BERT model
 bert_model = TFBertModel.from_pretrained('bert-base-uncased')
 
+# Custom Keras layer to wrap BERT model
+class BertLayer(tf.keras.layers.Layer):
+    def __init__(self, bert_model, **kwargs):
+        super(BertLayer, self).__init__(**kwargs)
+        self.bert = bert_model
+
+    def call(self, inputs):
+        input_ids, attention_mask = inputs
+        output = self.bert(input_ids=input_ids, attention_mask=attention_mask)
+        return output.last_hidden_state  # or choose `output.pooler_output` if you want pooled embeddings
+
+# Inputs
 input_ids = Input(shape=(max_length,), dtype=tf.int32, name='input_ids')
 attention_mask = Input(shape=(max_length,), dtype=tf.int32, name='attention_mask')
 
-bert_output = bert_model(input_ids, attention_mask=attention_mask)[0]
+# Apply the BERT layer
+bert_output = BertLayer(bert_model)([input_ids, attention_mask])
+
+# Add LSTM and Dense layers
 lstm_output = Bidirectional(LSTM(128, return_sequences=False))(bert_output)
 dropout = Dropout(0.3)(lstm_output)
 output = Dense(1, activation='sigmoid')(dropout)
 
+# Build and compile the model
 model = Model(inputs=[input_ids, attention_mask], outputs=output)
 
 model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=2e-5),
@@ -84,15 +100,30 @@ model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=2e-5),
 
 # Step 5: Train the model
 # Convert NumPy arrays to TensorFlow tensors explicitly before passing to the model
-history = model.fit(
-    [tf.convert_to_tensor(X_train_ids), tf.convert_to_tensor(X_train_attention)],  # Convert to tf.Tensor
-    y_train,
-    validation_data=([tf.convert_to_tensor(X_test_ids), tf.convert_to_tensor(X_test_attention)], y_test),  # Convert to tf.Tensor
-    epochs=3,
-    batch_size=16
-)
+X_train_ids_tensor = tf.convert_to_tensor(X_train_ids)
+X_train_attention_tensor = tf.convert_to_tensor(X_train_attention)
+y_train_tensor = tf.convert_to_tensor(y_train)
+
+X_test_ids_tensor = tf.convert_to_tensor(X_test_ids)
+X_test_attention_tensor = tf.convert_to_tensor(X_test_attention)
+y_test_tensor = tf.convert_to_tensor(y_test)
+
+# Enable profiling during training
+with tf.profiler.experimental.Profile('logdir'):
+    history = model.fit(
+        [X_train_ids_tensor, X_train_attention_tensor],
+        y_train_tensor,
+        validation_data=(
+            [X_test_ids_tensor, X_test_attention_tensor],
+            y_test_tensor
+        ),
+        epochs=3,
+        batch_size=16
+    )
+
 
 # Step 6: Save model
+# Save the model using TensorFlow's save method
 model.save('fake_news_model')
 
 # Step 7: Flask app for predictions
@@ -112,6 +143,10 @@ def predict():
     # Convert tokenized inputs to tf.Tensor before passing them to the model
     input_ids_tensor = tf.convert_to_tensor(tokenized['input_ids'])
     attention_mask_tensor = tf.convert_to_tensor(tokenized['attention_mask'])
+
+    # Ensure proper batch dimension for prediction
+    input_ids_tensor = tf.expand_dims(input_ids_tensor[0], axis=0)
+    attention_mask_tensor = tf.expand_dims(attention_mask_tensor[0], axis=0)
 
     # Make prediction
     prediction = model.predict([
