@@ -64,6 +64,5 @@ Response:
 - **Dropout Layer:** Prevents overfitting
 - **Dense Layer:** Outputs binary classification
 
-## License
-This project is open-source and available under the MIT License.
+
 
